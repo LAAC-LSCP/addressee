@@ -10,6 +10,12 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 import torchaudio
 
+
+
+id2label = {0:"ADS",
+            1:"KCDS",
+            2:"Other"}
+
 binary_classes = {"ADS":0,
                   "KCDS":1,
                   "Other":2}

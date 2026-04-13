@@ -1,47 +1,111 @@
 import argparse
-import copy
 import logging
-import shutil
+import sys
+import time
 from pathlib import Path
 from typing import Literal
-import torch
-import os
-from glob import glob 
-from huggingface_hub import hf_hub_download
-from torchcodec.decoders import AudioDecoder
 from tqdm import tqdm
-import pandas as pd 
 import lightning as pl
-from addressee.dataloaders import AddresseeDataloader
-from addressee.utils.config import load_config
-from addressee.models.modeling_hubert import HubertFinetune
+import pandas as pd
 import numpy as np
+import torch
+# Add VTC submodule to path so we can import its scripts
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+from VTC.scripts.infer import main as vtc_infer
+from huggingface_hub import hf_hub_download
+from addressee.dataloaders import AddresseeDataloader, id2label
+from addressee.models.modeling_hubert import HubertFinetune
+from addressee.utils.config import load_config
+from addressee.utils.utils import save_timing, get_audio_duration, free_gpu, resolve_device
+from glob import glob 
 
-id2label = {0: "ADS",
-            1: "KCDS",
-            2: "Other"}
-
-
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] %(name)s - %(message)s",
+    datefmt="%Y.%m.%d %H:%M:%S",
+)
+logger = logging.getLogger("pipeline")
 
 def process_inference_outputs(predictions, df):
     predictions = np.concatenate(predictions)
     predictions = np.argmax(predictions, axis=1)
-    predictions = np.array([ id2label[v] for v in predictions])
+    predictions = np.array([id2label[int(v)] for v in predictions])
     df.loc[(df["label"] == "FEM") | (df["label"] == "MAL"), "addressee"] = predictions
     df = df.drop(columns=["binary_classes", "segment_onset", "segment_offset", "duration(s)", "file_path", "recording_duration"])
 
     return df
 
+# from https://github.com/MarvinLvn/BabAR/blob/main/src/pipeline.py
+def run_vtc(uris,
+            wavs,
+            output,
+            vtc_batch_size,
+            high_precision,
+            wav_files,
+            wavs_needing_vtc,
+            device,
+            timing_path):
+    logger.info(
+        f"Step 1/2: Running VTC on {len(wavs_needing_vtc)}/{len(wav_files)} file(s) "
+        f"({len(wav_files) - len(wavs_needing_vtc)} already have RTTM)..."
+    )
+
+    vtc_start = time.time()
+    logger.info(f"Using {'high precision' if high_precision else 'F1'} thresholds.")
+    vtc_infer(
+        uris=uris,
+        wavs=str(wavs),
+        output=str(output),
+        config=str(REPO_ROOT / "VTC" / "VTC-2" / "model" / "config.toml"),
+        checkpoint=str(REPO_ROOT / "VTC" / "VTC-2" / "model" / "best.ckpt"),
+        batch_size=vtc_batch_size,
+        thresholds=REPO_ROOT / "VTC" / "thresholds" / ("hp.toml" if high_precision else "f1.toml"),
+        device=device,
+    )
+    vtc_total_sec = time.time() - vtc_start
+
+    # VTC processes all files as a batch, so we distribute time
+    # proportionally to each file's audio duration.
+    vtc_durations = {
+        w.stem: get_audio_duration(w) for w in wavs_needing_vtc
+    }
+    total_audio_dur = sum(vtc_durations.values())
+
+    vtc_timing = []
+    for w in wavs_needing_vtc:
+        audio_dur = vtc_durations[w.stem]
+        vtc_file_sec = (
+            vtc_total_sec * audio_dur / total_audio_dur
+            if total_audio_dur > 0
+            else 0.0
+        )
+        vtc_timing.append({
+            "filename": w.name,
+            "audio_duration_sec": round(audio_dur, 2),
+            "vtc_sec": round(vtc_file_sec, 2),
+        })
+
+    save_timing(vtc_timing, timing_path)
+    logger.info(f"VTC total time: {vtc_total_sec:.1f}s (per-file estimates saved to {timing_path})")
+
+
+    
+
+
 def main(
     output: str,
     uris: Path | None = None,
     VTC2_output: Path | None = None,
+    vtc_batch_size: int= 128,
+    max_utt_dur: float = 30.0,
     wavs: str = "data/debug/wav",
     save_logits: bool = False,
     batch_size: int = 128,
     context_size : float = 10.0,
     write_empty: bool = True,
     write_csv: bool = True,
+    high_precision: bool = False,
     device: Literal["gpu", "cuda", "cpu", "mps"] = "gpu",
     model_dir: str | None = None,
     model_revision: str | None = None,
@@ -52,6 +116,71 @@ def main(
     model_path = hf_hub_download(repo_id="coml/addressee", filename="best.ckpt", local_dir=model_dir, revision = model_revision)
     config_path = hf_hub_download(repo_id="coml/addressee", filename="config.yaml", local_dir=model_dir, revision = model_revision)
 
+
+    device = resolve_device(device)
+    output = Path(output)
+    wavs = Path(wavs)
+    output.mkdir(parents=True, exist_ok=True)
+    rttm_dir = output / "rttm"
+    csv_dir = output / "phonemes"
+    timing_path = output / "timing.csv"
+
+    wav_files = sorted(wavs.glob("*.wav"))
+    if not wav_files:
+        logger.error(f"No .wav files found in {wavs}")
+        return
+    
+    
+    logger.info(f"Found {len(wav_files)} audio file(s). Device: {device}")
+
+    # -- Step 1: VTC on all files ------------------------------------------
+    if uris is not None:
+        uri_set = set(pd.read_csv(uris, low_memory=False, header=None, names=["uris"])["uris"])
+        
+        wavs_needing_vtc = [
+            w for w in wav_files
+            if (w.stem in uri_set and not (rttm_dir / f"{w.stem}.rttm").exists())
+        ]
+        logger.info(f"Found {len(wavs_needing_vtc)} wavs to run on from {len(uri_set)} uris.")
+    else:
+        wavs_needing_vtc = [
+            w for w in wav_files
+            if not (rttm_dir / f"{w.stem}.rttm").exists()
+        ]
+        logger.info(f"Found {len(wavs_needing_vtc)} wavs to run on.")
+    
+    if wavs_needing_vtc:
+        run_vtc(uris,
+                wavs,
+                output,
+                vtc_batch_size,
+                high_precision,
+                wav_files,
+                wavs_needing_vtc,
+                device,
+                timing_path)
+    else:
+        logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) or {len(uri_set)} file(s) already have RTTM, skipping VTC.")
+
+    # Collect non-empty RTTMs
+    rttm_files = sorted(
+        f for f in rttm_dir.glob("*.rttm")
+        if f.stat().st_size > 0
+    )
+
+    if not rttm_files:
+        logger.warning("No RTTM files with speech found. Nothing to transcribe.")
+        return
+
+    logger.info(f"VTC done. {len(rttm_files)} file(s) with speech.")
+
+    # Free VTC model memory before loading BabAR
+    free_gpu()
+
+    # -------------------
+    # Addressee inference
+    # -------------------
+    
     config = load_config(train_config=config_path)
     config.train.batch_size = 32
     config.model_id = model_path
@@ -60,18 +189,19 @@ def main(
     model.eval()
     
     #filter abnormal audios ?
-    df_VTC2 = pd.read_csv(VTC2_output, low_memory=False)
+    if VTC2_output is not None: 
+        df_VTC2 = pd.read_csv(VTC2_output, low_memory=False)
+    else:
+        df_VTC2 = pd.read_csv(output / "rttm.csv", low_memory=False)
 
 
 
     df_VTC2["recording_duration"] = -1.0
     df_VTC2["file_path"] = ""
     for uid in tqdm(df_VTC2["uid"].unique()):
-        wav_file = wavs + "/"+ uid + ".wav"
-        decoder = AudioDecoder(wav_file)
-        duration = decoder.metadata.duration_seconds
-        df_VTC2.loc[df_VTC2["uid"] == uid, "recording_duration"] = duration
-        df_VTC2.loc[df_VTC2["uid"] == uid, "file_path"] = wav_file
+        wav_file = wavs / (uid + ".wav")
+        df_VTC2.loc[df_VTC2["uid"] == uid, "recording_duration"] = get_audio_duration(wav_file)
+        df_VTC2.loc[df_VTC2["uid"] == uid, "file_path"] = str(wav_file)
     
     #segment_onset in milliseconds
     df_VTC2["segment_onset"] = df_VTC2["start_time_s"] * 1000
@@ -80,7 +210,9 @@ def main(
     df_VTC2["addressee"] = pd.NA
     df_VTC2["binary_classes"] = "KCDS"
 
-    df_inference = df_VTC2.loc[(df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL")].copy()
+    df_VTC2.loc[(df_VTC2["duration(s)"] > 30) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL")), "addressee"] = "Other"
+
+    df_inference = df_VTC2.loc[(df_VTC2["duration(s)"] <= 30) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL"))].copy()
 
     dm = AddresseeDataloader(dataset = "addressee",
                              dataset_path= config.data.dataset_path,
@@ -98,9 +230,9 @@ def main(
 
     predictions = trainer.predict(model, datamodule=dm, ckpt_path=model_path)
 
-    df_VTC2 = process_inference_outputs(predictions, df_VTC2)
+    df_VTC2.loc[(df_VTC2["duration(s)"] <= 30) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL"))] = process_inference_outputs(predictions, df_inference)
 
-    df_VTC2.to_csv(output+"/rttm_addressee.csv", index=False)
+    df_VTC2.to_csv(output / "rttm_addressee.csv", index=False)
     return 
 
 
@@ -110,7 +242,8 @@ if __name__ == "__main__":
         "--uris", help="Path to a file containing the list of uris to use."
     )
     parser.add_argument(
-        "--VTC2_output", help="Path to a file containing the list of uris to use."
+        "--VTC2_output", help="Path to VTC2 output, rttm.csv",
+        default=None,
     )
     parser.add_argument(
         "--wavs",
