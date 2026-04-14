@@ -22,4 +22,4 @@ export TORCHDYNAMO_VERBOSE=1
 source /home/tcharlot/coml/addressee_inference/.venv/bin/activate
 
 
-srun uv run scripts/infer.py --uris /store/scratch/tkunze/data/baby_train/test.txt --wavs /store/scratch/tkunze/data/baby_train/wav --output /store/scratch/tcharlot/VTC2_perfs/babytrain/predictions_test --device gpu --batch_size 256 --VTC2_output /store/scratch/tcharlot/VTC2_perfs/babytrain/predictions_test/rttm.csv 
+srun uv run scripts/infer.py --uris /store/scratch/tkunze/data/baby_train/test.txt --wavs /store/scratch/tkunze/data/baby_train/wav --output /store/scratch/tcharlot/VTC2_perfs/babytrain/predictions_test --device gpu --batch_size 32 --VTC2_output /store/scratch/tcharlot/VTC2_perfs/babytrain/predictions_test/rttm.csv 

@@ -97,19 +97,14 @@ def main(
     output: str,
     uris: Path | None = None,
     VTC2_output: Path | None = None,
-    vtc_batch_size: int= 128,
+    VTC2_batch_size: int= 128,
     max_utt_dur: float = 30.0,
     wavs: str = "data/debug/wav",
-    save_logits: bool = False,
-    batch_size: int = 128,
-    context_size : float = 10.0,
-    write_empty: bool = True,
-    write_csv: bool = True,
-    high_precision: bool = False,
+    batch_size: int = 32,
+    VTC2_high_precision: bool = False,
     device: Literal["gpu", "cuda", "cpu", "mps"] = "gpu",
     model_dir: str | None = None,
     model_revision: str | None = None,
-    #keep_raw: bool = False,
     verbose=True,
 ):
     
@@ -122,7 +117,6 @@ def main(
     wavs = Path(wavs)
     output.mkdir(parents=True, exist_ok=True)
     rttm_dir = output / "rttm"
-    csv_dir = output / "phonemes"
     timing_path = output / "timing.csv"
 
     wav_files = sorted(wavs.glob("*.wav"))
@@ -132,6 +126,9 @@ def main(
     
     
     logger.info(f"Found {len(wav_files)} audio file(s). Device: {device}")
+    # -------------------
+    # VTC2 inference
+    # -------------------
 
     # -- Step 1: VTC on all files ------------------------------------------
     if uris is not None:
@@ -153,8 +150,8 @@ def main(
         run_vtc(uris,
                 wavs,
                 output,
-                vtc_batch_size,
-                high_precision,
+                VTC2_batch_size,
+                VTC2_high_precision,
                 wav_files,
                 wavs_needing_vtc,
                 device,
@@ -182,7 +179,7 @@ def main(
     # -------------------
     
     config = load_config(train_config=config_path)
-    config.train.batch_size = 32
+    config.train.batch_size = batch_size
     config.model_id = model_path
     
     model = HubertFinetune(config)
@@ -210,9 +207,9 @@ def main(
     df_VTC2["addressee"] = pd.NA
     df_VTC2["binary_classes"] = "KCDS"
 
-    df_VTC2.loc[(df_VTC2["duration(s)"] > 30) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL")), "addressee"] = "Other"
+    df_VTC2.loc[(df_VTC2["duration(s)"] > max_utt_dur) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL")), "addressee"] = "Other"
 
-    df_inference = df_VTC2.loc[(df_VTC2["duration(s)"] <= 30) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL"))].copy()
+    df_inference = df_VTC2.loc[(df_VTC2["duration(s)"] <= max_utt_dur) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL"))].copy()
 
     dm = AddresseeDataloader(dataset = "addressee",
                              dataset_path= config.data.dataset_path,
@@ -230,9 +227,9 @@ def main(
 
     predictions = trainer.predict(model, datamodule=dm, ckpt_path=model_path)
 
-    df_VTC2.loc[(df_VTC2["duration(s)"] <= 30) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL"))] = process_inference_outputs(predictions, df_inference)
+    df_VTC2.loc[(df_VTC2["duration(s)"] <= max_utt_dur) & ((df_VTC2["label"] == "FEM") | (df_VTC2["label"] == "MAL"))] = process_inference_outputs(predictions, df_inference)
 
-    df_VTC2.to_csv(output / "rttm_addressee.csv", index=False)
+    df_VTC2.to_csv(output / "rttm_addressee.csv", columns=["uid", "start_time_s", "duration_s", "label", "addressee"], index=False)
     return 
 
 
@@ -256,21 +253,36 @@ if __name__ == "__main__":
         help="Output Path to the folder that will contain the final predictions.",
     )
     parser.add_argument(
-        "--save_logits",
-        action="store_true",
-        help="If the prediction scripts saves the logits to disk, can be memory intensive.",
+        "--max_utt_dur", help="Maximum utterance duration to classify, higher will be classified as Other",
+        default=30,
+    )
+
+    parser.add_argument(
+        "--model_dir",
+        default=None,
+        help="Model directory path, defaults to huggingface cache dir.",
+    )
+    parser.add_argument(
+        "--model_revision",
+        default=None,
+        help="Model revision to select specific model checkpoint on huggingface.",
+    )
+    parser.add_argument(
+        "--VTC2_batch_size",
+        default=128,
+        type=int,
+        help="VTC2 batch size to use for the forward pass of the model.",
     )
     parser.add_argument(
         "--batch_size",
-        default=128,
+        default=32,
         type=int,
-        help="Batch size to use for the forward pass of the model.",
+        help="Addressee batch size to use for the forward pass of the model.",
     )
     parser.add_argument(
-        "--context_size",
-        default=10.0,
-        type=float,
-        help="Context window to use for the forward pass of the model.",
+        "--VTC2_high_precision",
+        default="store_true",
+        help="Use VTC2 high_precision thresholds",
     )
     parser.add_argument(
         "--device",
