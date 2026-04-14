@@ -1,6 +1,6 @@
 # Addressee Classifier
 
-The Addressee Classifier is a classification model that, given a segmented adult speech audio, outputs a classification of child-directed speech.
+The Addressee Classifier is a classification model that, given a human or automatically segmented adult speech audio, outputs a classification of child-directed speech.
 
 The four classes that the model will output are:
 - **KCDS** stands for key-child directed speech
@@ -9,7 +9,7 @@ The four classes that the model will output are:
 
 The model has been specifically trained to work with child-centered long-form recordings. These are recordings that can span multiple hours and have been collected using a portable recorder attached to the vest of a child (usually 0 to 5 years of age).
 
-## 0. Table of contents
+## Table of contents
 
 1. [Installation](#1-installation)
 2. [Input data requirements](#2-input-data-requirements)
@@ -62,22 +62,22 @@ All audio files must be:
 If your files do not meet these requirements, use the provided conversion script:
 
 ```bash
-uv run scripts/convert.py --wavs /path/to/raw_audio --output /path/to/converted_audio
+uv run scripts/convert.py \
+    --wavs /path/to/raw_audio \
+    --output /path/to/converted_audio
 ```
-
-This script will resample to 16 kHz and average channels if needed.
 
 ### Utterance duration
 
-The pipeline classifies utterances of up to 30 seconds. Utterances from `FEM` or `MAL` speakers longer than 30 seconds are automatically assigned the label `Other` without being passed through the model.
+The pipeline classifies utterances of up to `max_utt_dur` seconds, set by default to 30s. Utterances from `FEM` or `MAL` speakers longer than `max_utt_dur` seconds are automatically assigned the label `Other` without being passed through the model.
 
 ---
 
 ## 3. Inference
 
-The pipeline runs in two sequential steps:
+The pipeline runs by default in two sequential steps:
 
-**Step 1 — Voice Type Classifier (VTC):** The audio is processed by VTC 2, which segments the recording and assigns a broad speaker type to each segment: `KCHI` (key child), `OCH` (other child), `MAL` (male adult), `FEM` (female adult), or silence. Output is saved as `.rttm` files.
+**Step 1 — Voice Type Classifier (VTC):** The audio is processed by VTC 2, which segments the recording and assigns a broad speaker type to each segment: `KCHI` (key child), `OCH` (other child), `MAL` (male adult), `FEM` (female adult), or silence. Output is saved per audio as `.rttm` files and regrouped in the `rttm.csv` file.
 
 **Step 2 — Addressee classification:** Segments labelled `FEM` or `MAL` are passed to the addressee model (HuBERT-based), which classifies each segment as `KCDS`, `ADS`, or `Other`. Non-adult segments are left unclassified.
 
@@ -85,7 +85,7 @@ The pipeline runs in two sequential steps:
 uv run scripts/infer.py \
     --wavs audios \        # path to folder containing .wav files
     --output predictions \ # output folder
-    --device cpu           # device: cpu, cuda/gpu, or mps
+    --device cuda          # device: cpu, cuda/gpu, or mps
 ```
 
 ### Skipping VTC (using existing RTTM output)
@@ -120,28 +120,7 @@ sh scripts/run.sh
 
 ---
 
-## 4. CLI reference
-
-| Argument | Type | Default | Description |
-|---|---|---|---|
-| `--wavs` | `str` | `data/debug/wav` | Path to the folder containing `.wav` audio files. |
-| `--output` | `str` | *(required)* | Path to the output folder. Created if it does not exist. |
-| `--device` | `str` | `cuda` | Device to run inference on. One of `cpu`, `cuda`, `gpu`, or `mps`. |
-| `--VTC2_output` | `str` | `None` | Path to a pre-existing VTC output CSV (`rttm.csv`). If provided, the VTC step is skipped entirely. |
-| `--uris` | `str` | `None` | Path to a plain-text file listing recording IDs (one per line) to process. Used to run on a subset of the files in `--wavs`. If omitted, all `.wav` files in `--wavs` are processed. |
-| `--vtc_batch_size` | `int` | `128` | Batch size for the VTC model. Larger values are faster but require more GPU memory. |
-| `--batch_size` | `int` | `128` | Batch size for the addressee model. |
-| `--context_size` | `float` | `10.0` | Context window in seconds provided to the model around each utterance. |
-| `--save_logits` | `flag` | `False` | If set, raw model logits are saved alongside predictions. Memory-intensive. |
-| `--high_precision` | `flag` | `False` | Use high-precision VTC thresholds instead of F1-optimised thresholds. |
-| `--write_empty` | `bool` | `True` | Whether to write output files for recordings that contain no detected speech. |
-| `--write_csv` | `bool` | `True` | Whether to write the CSV version of the RTTM output. |
-| `--model_dir` | `str` | `None` | Local directory to cache the downloaded model checkpoint and config. Uses the Hugging Face default cache if omitted. |
-| `--model_revision` | `str` | `None` | Specific revision (branch, tag, or commit hash) of the `coml/addressee` HuggingFace model to use. Uses the latest version if omitted. |
-
----
-
-## 5. Output format
+## 4. Output format
 
 The pipeline writes the following files to `<output>/`:
 
@@ -165,6 +144,29 @@ This is the main output file. It extends VTC2 `rttm.csv` with the `addressee` co
 | `start_time_s` | Utterance onset in seconds from the beginning of the recording. |
 | `duration_s` | Utterance duration in seconds. |
 | `addressee` | Addressee classification for adult (`MAL`, `FEM`) segments: `KCDS`, `ADS`, or `Other`. Empty (`NaN`) for non-adult segments. Segments longer than 30 s are assigned `Other` without model inference. |
+
+---
+
+## 5. CLI reference
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `--wavs` | `str` | `data/debug/wav` | Path to the folder containing `.wav` audio files. |
+| `--output` | `str` | *(required)* | Path to the output folder. Created if it does not exist. |
+| `--device` | `str` | `cuda` | Device to run inference on. One of `cpu`, `cuda`, `gpu`, or `mps`. |
+| `--VTC2_output` | `str` | `None` | Path to a pre-existing VTC output CSV (`rttm.csv`). If provided, the VTC step is skipped entirely. |
+| `--uris` | `str` | `None` | Path to a plain-text file listing recording IDs (one per line) to process. Used to run on a subset of the files in `--wavs`. If omitted, all `.wav` files in `--wavs` are processed. |
+| `--vtc_batch_size` | `int` | `128` | Batch size for the VTC model. Larger values are faster but require more GPU memory. |
+| `--batch_size` | `int` | `128` | Batch size for the addressee model. |
+| `--context_size` | `float` | `10.0` | Context window in seconds provided to the model around each utterance. |
+| `--save_logits` | `flag` | `False` | If set, raw model logits are saved alongside predictions. Memory-intensive. |
+| `--high_precision` | `flag` | `False` | Use high-precision VTC thresholds instead of F1-optimised thresholds. |
+| `--write_empty` | `bool` | `True` | Whether to write output files for recordings that contain no detected speech. |
+| `--write_csv` | `bool` | `True` | Whether to write the CSV version of the RTTM output. |
+| `--model_dir` | `str` | `None` | Local directory to cache the downloaded model checkpoint and config. Uses the Hugging Face default cache if omitted. |
+| `--model_revision` | `str` | `None` | Specific revision (branch, tag, or commit hash) of the `coml/addressee` HuggingFace model to use. Uses the latest version if omitted. |
+
+---
 
 ## 6. Model architecture and design
 
