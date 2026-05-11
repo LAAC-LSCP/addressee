@@ -1,0 +1,60 @@
+[project]
+site_name = "LAAC-LSCP Models"
+site_url = "https://laac-lscp.github.io/addressee/"
+site_description = "A deep learning model for classifying addressee in child-centered long-form audio recordings."
+site_author = "LAAC-LSCP"
+copyright = "&copy; 2026 LAAC-LSCP, ENS-PSL"
+
+nav = [
+    { "VTC2.0" = [
+        "https://laac-lscp.github.io/VTC/"
+    ]},
+    
+    { "BabyHuBERT" = [
+        "https://laac-lscp.github.io/BabyHuBERT/"
+    ]},
+
+    { "Addressee" = [
+        { "Home" = "index.md" },
+        { "Getting Started" = "getting-started.md" },
+        { "User Guide" = "guide.md" },
+        { "Advanced" = [
+            { "HPC" = "advanced/hpc.md" },
+            "advanced/finetuning.md",
+        ] },
+        { "Miscellaneous" = [
+            { "Troubleshooting" = "misc/troubleshooting.md" },
+        ] },
+    ]},
+]
+
+[project.theme]
+features = [
+    "navigation.tabs",
+    "navigation.sections",
+    "navigation.instant",
+    "navigation.path",
+    "navigation.top",
+    "navigation.footer",
+    # "navigation.instant.preview", # experimental :/
+    "toc.follow",
+    "content.code.copy",
+]
+favicon = "assets/baby.png"
+[project.theme.icon]
+logo = "lucide/baby"
+# logo = "assets/favicon_256.png"
+
+[project.theme.palette]
+# scheme = "slate"
+primary = "green"
+accent = "green"
+
+[project.extra]
+repo_url = "https://github.com/LAAC-LSCP/addressee"
+repo_name = "LAAC-LSCP/addressee"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/LAAC-LSCP/addressee"
+name = "addressee GitHub repository"

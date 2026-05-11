@@ -39,3 +39,10 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.15.0",
 ]
+doc = [
+    "zensical>=0.0.24",
+]
+
+[project.urls]
+documentation = "https://laac-lscp.github.io/BabyHuBERT/"
+
