@@ -105,6 +105,7 @@ def main(
     device: Literal["gpu", "cuda", "cpu", "mps"] = "gpu",
     model_dir: str | None = None,
     model_revision: str | None = None,
+    recursive_search: bool = False,
     verbose=True,
 ):
     
@@ -119,7 +120,12 @@ def main(
     rttm_dir = output / "rttm"
     timing_path = output / "timing.csv"
 
-    wav_files = sorted(wavs.glob("*.wav"))
+
+    if recursive_search == True:
+        wav_files = list(wavs.rglob("*.wav"))
+    else:
+        wav_files = list(wavs.glob("*.wav"))
+    wav_files = sorted(wav_files)
     if not wav_files:
         logger.error(f"No .wav files found in {wavs}")
         return
@@ -289,6 +295,11 @@ if __name__ == "__main__":
         default="cuda",
         choices=["gpu", "cuda", "cpu", "mps"],
         help="Size of the batch used for the forward pass in the model.",
+    )
+    parser.add_argument(
+        "--recursive_search",
+        action="store_true",
+        help="Recursively search for `.wav` files. Might be slow. Defaults to False.",
     )
     torch.set_float32_matmul_precision('high')
     args = parser.parse_args()
