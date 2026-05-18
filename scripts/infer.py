@@ -163,7 +163,11 @@ def main(
                 device,
                 timing_path)
     else:
-        logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) or {len(uri_set)} file(s) already have RTTM, skipping VTC.")
+        if uris:
+            logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) or {len(uri_set)} file(s) from uris subset already have RTTM, skipping VTC.")
+        else:
+            logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) already have RTTM, skipping VTC.")
+
 
     # Collect non-empty RTTMs
     rttm_files = sorted(
