@@ -100,7 +100,8 @@ def main(
     VTC2_batch_size: int= 128,
     max_utt_dur: float = 30.0,
     wavs: str = "data/debug/wav",
-    batch_size: int = 32,
+    batch_size: int = 16,
+    n_workers: int = 4,
     VTC2_high_precision: bool = False,
     device: Literal["gpu", "cuda", "cpu", "mps"] = "gpu",
     model_dir: str | None = None,
@@ -225,8 +226,8 @@ def main(
                              dataset_path= config.data.dataset_path,
                              inference=True,
                              optional_df=df_inference,
-                             config= config)
-
+                             config= config,
+                             n_workers=n_workers)
 
 
     trainer = pl.Trainer(
@@ -288,6 +289,12 @@ if __name__ == "__main__":
         default=32,
         type=int,
         help="Addressee batch size to use for the forward pass of the model.",
+    )
+    parser.add_argument(
+        "--n_workers",
+        default=4,
+        type=int,
+        help="Addressee number of workers to speedup the dataloading. Increases cpu memory consumption",
     )
     parser.add_argument(
         "--VTC2_high_precision",

@@ -8,8 +8,7 @@ import pandas as pd
 from pandas import DataFrame
 import torch
 from torch.utils.data import DataLoader, Dataset
-import torchaudio
-
+from torchcodec.decoders import AudioDecoder
 
 
 id2label = {0:"ADS",
@@ -40,6 +39,24 @@ def extend_utterances(df, t):
     
     return df
 
+# from https://github.com/arxaqapi/segma/.../io.py
+def get_samples_in_range(audio_p: Path, start_s: int, stop_s: int) -> torch.Tensor:
+    """Get samples in range [start_f : start_f + duration_f].
+
+    Args:
+        audio_p (Path): Path to the audio file in `.wav` format.
+        start_f (int): start frame to start loading the audio samples.
+        duration_f (int): duration of the loaded window. If `duration_f==-1` the the rest of the audio is loaded
+
+    Returns:
+        torch.Tensor: Tensor containing the loaded data, with shape (n_channels, n_samples).
+    """
+    decoder = AudioDecoder(audio_p.resolve())
+    return decoder.get_samples_played_in_range(
+        start_seconds=start_s,
+        stop_seconds=stop_s
+    ).data
+
 class AddresseeDataloader(pl.LightningDataModule):
 
     def __init__(
@@ -49,19 +66,15 @@ class AddresseeDataloader(pl.LightningDataModule):
         config,
         inference=False,
         optional_df = DataFrame | None,
-        num_cpus=11
+        n_workers=4
     ) -> None:
         super().__init__()
         self.dataset = dataset
         self.dataset_path = dataset_path
         self.config = config
         self.inference = inference
-        self.num_cpus = num_cpus
         self.df = optional_df
-        if self.num_cpus > 11:
-            self.n_workers = 16
-        else:
-            self.n_workers = 8
+        self.n_workers = n_workers
         self.rng = np.random.default_rng()
 
     def train_dataloader(self) -> DataLoader:
@@ -250,7 +263,6 @@ class AddresseeDataset(Dataset):
             self.label_to_id = binary_classes
         if config.data.classes == "ternary_classes":
             self.label_to_id = ternary_classes
-        
 
     def __len__(self):
         return len(self.f_list)
@@ -302,11 +314,9 @@ class AddresseeDataset(Dataset):
         Returns:
             Tensor: 1-D waveform tensor of shape ``(num_samples,)``.
         """
-        waveform, sr = torchaudio.load(
-                uri=Path(self.f_list[index]),
-                frame_offset=int(self.wav_onset[index])*16,
-                num_frames=int(self.wav_offset[index]*16 - self.wav_onset[index]*16)
-                )
+        waveform = get_samples_in_range(audio_p=Path(self.f_list[index]),
+                                           start_s=self.wav_onset[index]/1000,
+                                           stop_s=self.wav_offset[index]/1000)
         return waveform.squeeze(0)
 
     def _load_labels(self, dataset: str, subset: str, config) -> np.ndarray:
