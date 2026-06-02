@@ -45,7 +45,8 @@ def run_vtc(uris,
             wav_files,
             wavs_needing_vtc,
             device,
-            timing_path):
+            timing_path,
+            recursive_search):
     logger.info(
         f"Step 1/2: Running VTC on {len(wavs_needing_vtc)}/{len(wav_files)} file(s) "
         f"({len(wav_files) - len(wavs_needing_vtc)} already have RTTM)..."
@@ -62,6 +63,7 @@ def run_vtc(uris,
         batch_size=vtc_batch_size,
         thresholds=REPO_ROOT / "VTC" / "thresholds" / ("hp.toml" if high_precision else "f1.toml"),
         device=device,
+        recursive_search=recursive_search
     )
     vtc_total_sec = time.time() - vtc_start
 
@@ -162,7 +164,8 @@ def main(
                 wav_files,
                 wavs_needing_vtc,
                 device,
-                timing_path)
+                timing_path,
+                recursive_search=recursive_search)
     else:
         if uris:
             logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) or {len(uri_set)} file(s) from uris subset already have RTTM, skipping VTC.")
