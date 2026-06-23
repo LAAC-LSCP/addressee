@@ -208,6 +208,14 @@ The pipeline applies a hard 30-second cap before model inference: any adult utte
 ### 7.1 Runtime
 ### 7.2 Model Performance on the heldout set
 ### 7.3 Model Performance using VTC2 segments 
+### 7.4 Speech quantities correlations 
+To validate the pipeline, we correlated automatic KCDS and ADS quantity estimates with human-annotated ground truth across two typologically distinct corpora: Winnipeg (English, North America) and Tseltal (Mayan, Mexico). The pipeline achieves strong agreement on Winnipeg (r = 0.69–0.71, p < 1e-34) and moderate agreement on Tseltal (r = 0.35–0.47, p < 1e-7).
+
+
+<p float="left">
+  <img src="figures/correlatin_graph_all_by_clip_KCDS.png" width="49.8%" />
+  <img src="figures/correlatin_graph_all_by_clip_ADS.png" width="48%" />
+</p>
 
 ## 8. Troubleshooting
 
@@ -241,7 +249,14 @@ The training code for the addressee model can be found at [labicquette/addressee
 To cite this work, please use the following BibTeX entry:
 
 ```bibtex
-@misc{charlot2026addressee
+@misc{charlot2026contextawarechilddirectedspeechdetection,
+      title={Context-aware child-directed speech detection from long-form recordings}, 
+      author={Théo Charlot and Tarek Kunze and Kaveri K. Sheth and Alejandrina Cristia and Marvin Lavechin},
+      year={2026},
+      eprint={2606.01134},
+      archivePrefix={arXiv},
+      primaryClass={eess.AS},
+      url={https://arxiv.org/abs/2606.01134}, 
 }
 ```
 
