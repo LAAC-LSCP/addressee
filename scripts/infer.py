@@ -301,7 +301,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--VTC2_high_precision",
-        default="store_true",
+        action="store_true",
         help="Use VTC2 high_precision thresholds",
     )
     parser.add_argument(
