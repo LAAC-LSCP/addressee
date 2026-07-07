@@ -46,7 +46,7 @@ def run_vtc(uris,
             wavs_needing_vtc,
             device,
             timing_path,
-            recursive_search):
+            ):
     logger.info(
         f"Step 1/2: Running VTC on {len(wavs_needing_vtc)}/{len(wav_files)} file(s) "
         f"({len(wav_files) - len(wavs_needing_vtc)} already have RTTM)..."
@@ -63,7 +63,6 @@ def run_vtc(uris,
         batch_size=vtc_batch_size,
         thresholds=REPO_ROOT / "VTC" / "thresholds" / ("hp.toml" if high_precision else "f1.toml"),
         device=device,
-        recursive_search=recursive_search
     )
     vtc_total_sec = time.time() - vtc_start
 
@@ -107,8 +106,7 @@ def main(
     VTC2_high_precision: bool = False,
     device: Literal["gpu", "cuda", "cpu", "mps"] = "gpu",
     model_dir: str | None = None,
-    model_revision: str | None = None,
-    recursive_search: bool = False,
+    model_revision: str | None = None
     verbose=True,
 ):
     
@@ -124,10 +122,8 @@ def main(
     timing_path = output / "timing.csv"
 
 
-    if recursive_search == True:
-        wav_files = list(wavs.rglob("*.wav"))
-    else:
-        wav_files = list(wavs.glob("*.wav"))
+    
+    wav_files = list(wavs.glob("*.wav"))
     wav_files = sorted(wav_files)
     if not wav_files:
         logger.error(f"No .wav files found in {wavs}")
@@ -138,55 +134,55 @@ def main(
     # -------------------
     # VTC2 inference
     # -------------------
+    if VTC2_output is None:
 
-    # -- Step 1: VTC on all files ------------------------------------------
-    if uris is not None:
-        uri_set = set(pd.read_csv(uris, low_memory=False, header=None, names=["uris"])["uris"])
-        
-        wavs_needing_vtc = [
-            w for w in wav_files
-            if (w.stem in uri_set and not (rttm_dir / f"{w.stem}.rttm").exists())
-        ]
-        logger.info(f"Found {len(wavs_needing_vtc)} wavs to run on from {len(uri_set)} uris.")
-    else:
-        wavs_needing_vtc = [
-            w for w in wav_files
-            if not (rttm_dir / f"{w.stem}.rttm").exists()
-        ]
-        logger.info(f"Found {len(wavs_needing_vtc)} wavs to run on.")
-    
-    if wavs_needing_vtc:
-        run_vtc(uris,
-                wavs,
-                output,
-                VTC2_batch_size,
-                VTC2_high_precision,
-                wav_files,
-                wavs_needing_vtc,
-                device,
-                timing_path,
-                recursive_search=recursive_search)
-    else:
-        if uris:
-            logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) or {len(uri_set)} file(s) from uris subset already have RTTM, skipping VTC.")
+        # -- Step 1: VTC on all files ------------------------------------------
+        if uris is not None:
+            uri_set = set(pd.read_csv(uris, low_memory=False, header=None, names=["uris"])["uris"])
+            
+            wavs_needing_vtc = [
+                w for w in wav_files
+                if (w.stem in uri_set and not (rttm_dir / f"{w.stem}.rttm").exists())
+            ]
+            logger.info(f"Found {len(wavs_needing_vtc)} wavs to run on from {len(uri_set)} uris.")
         else:
-            logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) already have RTTM, skipping VTC.")
+            wavs_needing_vtc = [
+                w for w in wav_files
+                if not (rttm_dir / f"{w.stem}.rttm").exists()
+            ]
+            logger.info(f"Found {len(wavs_needing_vtc)} wavs to run on.")
+        
+        if wavs_needing_vtc:
+            run_vtc(uris,
+                    wavs,
+                    output,
+                    VTC2_batch_size,
+                    VTC2_high_precision,
+                    wav_files,
+                    wavs_needing_vtc,
+                    device,
+                    timing_path)
+        else:
+            if uris:
+                logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) or {len(uri_set)} file(s) from uris subset already have RTTM, skipping VTC.")
+            else:
+                logger.info(f"Step 1/2: All {len(wavs_needing_vtc)} wavs from {len(wav_files)} file(s) already have RTTM, skipping VTC.")
 
 
-    # Collect non-empty RTTMs
-    rttm_files = sorted(
-        f for f in rttm_dir.glob("*.rttm")
-        if f.stat().st_size > 0
-    )
+        # Collect non-empty RTTMs
+        rttm_files = sorted(
+            f for f in rttm_dir.glob("*.rttm")
+            if f.stat().st_size > 0
+        )
 
-    if not rttm_files:
-        logger.warning("No RTTM files with speech found. Nothing to transcribe.")
-        return
+        if not rttm_files:
+            logger.warning("No RTTM files with speech found. Nothing to transcribe.")
+            return
 
-    logger.info(f"VTC done. {len(rttm_files)} file(s) with speech.")
+        logger.info(f"VTC done. {len(rttm_files)} file(s) with speech.")
 
-    # Free VTC model memory before loading BabAR
-    free_gpu()
+        # Free VTC model memory before loading BabAR
+        free_gpu()
 
     # -------------------
     # Addressee inference
@@ -309,11 +305,6 @@ if __name__ == "__main__":
         default="cuda",
         choices=["gpu", "cuda", "cpu", "mps"],
         help="Size of the batch used for the forward pass in the model.",
-    )
-    parser.add_argument(
-        "--recursive_search",
-        action="store_true",
-        help="Recursively search for `.wav` files. Might be slow. Defaults to False.",
     )
     torch.set_float32_matmul_precision('high')
     args = parser.parse_args()
