@@ -106,7 +106,7 @@ def main(
     VTC2_high_precision: bool = False,
     device: Literal["gpu", "cuda", "cpu", "mps"] = "gpu",
     model_dir: str | None = None,
-    model_revision: str | None = None
+    model_revision: str | None = None,
     verbose=True,
 ):
     

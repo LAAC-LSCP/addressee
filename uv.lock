@@ -51,7 +51,7 @@ requires-dist = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
-    { name = "segma", git = "https://github.com/arxaqapi/segma?rev=9c398231011a7b16b76cf7be8e99c8b4dbc7ac35" },
+    { name = "segma", git = "https://github.com/MarvinLvn/segma?rev=e6cebc5b232ac1a30554caa7ec35dd22057d07f0" },
     { name = "soundfile", specifier = ">=0.13.1" },
     { name = "torch", specifier = "==2.11" },
     { name = "torchaudio", specifier = "==2.11" },
@@ -2410,7 +2410,7 @@ wheels = [
 [[package]]
 name = "segma"
 version = "0.1.0"
-source = { git = "https://github.com/arxaqapi/segma?rev=9c398231011a7b16b76cf7be8e99c8b4dbc7ac35#9c398231011a7b16b76cf7be8e99c8b4dbc7ac35" }
+source = { git = "https://github.com/MarvinLvn/segma?rev=e6cebc5b232ac1a30554caa7ec35dd22057d07f0#e6cebc5b232ac1a30554caa7ec35dd22057d07f0" }
 dependencies = [
     { name = "interlap" },
     { name = "lightning" },
