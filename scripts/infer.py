@@ -207,7 +207,7 @@ def main(
     df_VTC2["file_path"] = ""
     for uid in tqdm(df_VTC2["uid"].unique()):
         wav_file = wavs / (uid + ".wav")
-        df_VTC2.loc[df_VTC2["uid"] == uid, "recording_duration"] = get_audio_duration(wav_file)
+        df_VTC2.loc[df_VTC2["uid"] == uid, "recording_duration"] = get_audio_duration(wav_file) * 1000
         df_VTC2.loc[df_VTC2["uid"] == uid, "file_path"] = str(wav_file)
     
     #segment_onset in milliseconds

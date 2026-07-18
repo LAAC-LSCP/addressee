@@ -34,7 +34,7 @@ def extend_utterances(df, t):
     df[offset_str] = df["segment_offset"] + df["fill"]
     df.loc[df[onset_str] < 0, offset_str] = t * 1000
     df.loc[df[onset_str] < 0, onset_str] = 0.0
-    df.loc[df[offset_str] > df["recording_duration"], onset_str] = df["recording_duration"] - (t*1000)
+    df.loc[df[offset_str] > df["recording_duration"], onset_str] = (df["recording_duration"] - (t*1000)).clip(lower=0)
     df.loc[df[offset_str] > df["recording_duration"], offset_str] = df["recording_duration"]
     
     return df
@@ -317,6 +317,7 @@ class AddresseeDataset(Dataset):
         waveform = get_samples_in_range(audio_p=Path(self.f_list[index]),
                                            start_s=self.wav_onset[index]/1000,
                                            stop_s=self.wav_offset[index]/1000)
+        #print(self.f_list[index], waveform.shape, self.wav_onset[index]/1000, self.wav_offset[index]/1000)
         return waveform.squeeze(0)
 
     def _load_labels(self, dataset: str, subset: str, config) -> np.ndarray:
